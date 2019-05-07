@@ -1,0 +1,18 @@
+This package contains the dataset annotations used by the following paper:
+
+Deep image retrieval: learning global representations for image search. A. Gordo, J. Almazan, J. Revaud, and D. Larlus. In ECCV, 2016
+
+The images of this dataset are a subset of the images provided by Babenko et al, see 
+http://sites.skoltech.ru/compvision/projects/neuralcodes/
+
+We provide annotations for two variants of the dataset:
+- Landmarks-full: This includes almost all of the images of the original dataset, except those images that we could not download and except those images/categories that appear in the Oxford 5k, Paris 6k, and Holidays dataset (so one can safely train on Landmarks-full and test on any of those). These images are  *not* geometrically verified, and in fact the dataset contains many mislabeled images. The file with the annotations contains two fields per line, the first one is the url to the image, and the second is the class label, an integer from 0 to 585.
+
+- Landmarks-clean: This is a subset of Landmarks-full that includes only geometrically verified images. The annotation file contains six fields, the first two are the url and the class label, while the last four are the coordinates of an *estimated* bounding box in x1 x2 y1 y2 format.
+
+For each dataset two files are provided, one for the train partition and one for the validation partition.
+We also provide md5 hashes of the Landmarks-clean images.
+
+For additional information, please check:
+www.xrce.xerox.com/Deep-Image-Retrieval
+
