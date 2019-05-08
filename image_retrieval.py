@@ -96,10 +96,8 @@ class Config():
     root = '/Users/tezign/PycharmProjects/abracadabra/cy_cv/finetuning/'
     train_data_dirs = ["../valid_data_h_risk/", "../valid_data_l_risk/"]
     test_data_dirs = [""]
-    train_txt = '/Users/tezign/PycharmProjects/CV_learn/kaggle/landmark_retrieval/' \
-                'annotations_landmarks/annotation_clean_train.txt'
-    test_txt = '/Users/tezign/PycharmProjects/CV_learn/kaggle/landmark_retrieval/' \
-               'annotations_landmarks/annotation_clean_val.txt'
+    train_txt = 'annotation_clean_train.txt'
+    test_txt = 'annotation_clean_val.txt'
     train_batch_size = 32
     test_batch_size = 16
     train_number_epochs = 1000
@@ -299,4 +297,4 @@ if __name__ == '__main__':
     model = siames_model()
     since = time.time()
     model.fine_tune_pretrained_model()
-    model.extract_feature("404.jpg")
+    model.extract_feature("404.jpg", True)

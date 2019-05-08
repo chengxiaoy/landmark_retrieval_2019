@@ -89,13 +89,16 @@ landmark_val_dict = get_label_dict_from_txt("annotations_landmarks/annotation_cl
 train_file = "annotation_clean_train.txt"
 val_file = "annotation_clean_val.txt"
 
-train_data_dict = {}
+
+process_dict = landmark_val_dict
+
+write_file = val_file
 
 
 def download_train_and_record(keys):
     res_dict = {}
     for key in keys:
-        urls = landmark_train_dict[key]
+        urls = process_dict[key]
         paths = []
         for url in urls:
             try:
@@ -123,7 +126,7 @@ def dict_2_file(dicts, file_path):
 
 pool_num = 50
 p = multiprocessing.Pool(processes=pool_num)
-keys = list(landmark_val_dict.keys())
+keys = list(process_dict.keys())
 sub_size = len(keys) // pool_num
 results = []
 for i in range(pool_num):
@@ -138,4 +141,4 @@ p.close()
 p.join()
 print('All subprocesses done.')
 
-dict_2_file(results, val_file)
+dict_2_file(results, write_file)
