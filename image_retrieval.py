@@ -263,6 +263,12 @@ def train_model(model, criterion, optimizer, scheduler, dataloaders, dataset_siz
     return model
 
 
+def collate_tuples(batch):
+    if len(batch) == 1:
+        return [batch[0][0]], [batch[0][1]]
+    return [batch[i][0] for i in range(len(batch))], [batch[i][1] for i in range(len(batch))]
+
+
 class siames_model:
     def __init__(self):
         pass
@@ -270,10 +276,11 @@ class siames_model:
     def fine_tune_pretrained_model(self):
         train_data = MyDataset(train_dict, should_invert=False)
         train_dataloader = DataLoader(dataset=train_data, shuffle=True, num_workers=0,
-                                      batch_size=Config.train_batch_size)
+                                      batch_size=Config.train_batch_size, collate_fn=collate_tuples)
         test_data = MyDataset(val_dict
                               , should_invert=False)
-        test_dataloader = DataLoader(dataset=test_data, shuffle=True, num_workers=0, batch_size=Config.test_batch_size)
+        test_dataloader = DataLoader(dataset=test_data, shuffle=True, num_workers=0, batch_size=Config.test_batch_size,
+                                     collate_fn=collate_tuples)
         net = SiameseNetwork().to(device)
         criterion = ContrastiveLoss()
         optimizer = optim.Adam(net.parameters(), lr=0.0005)
