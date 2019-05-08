@@ -40,8 +40,8 @@ def download_image(url, out_dir):
         print('Image %s already exists. Skipping download.' % filename)
         return filename
     try:
-        r = requests.get(url, stream=True, headers=headers, timeout=3, proxies=proxies, verify=False)
-        # r = requests.get(url, stream=True, headers=headers, timeout=3)
+        # r = requests.get(url, stream=True, headers=headers, timeout=3, proxies=proxies, verify=False)
+        r = requests.get(url, stream=True, headers=headers, timeout=3)
     except:
         print('Warning: Could not download image %s from %s' % (key, url))
         return
@@ -110,26 +110,31 @@ def download_train_and_record(keys):
 def dict_2_file(dicts, file_path):
     lines = []
     with open(file_path, "w") as f:
-        for dict in dicts:
-            for key in dict.get():
+        for dict_future in dicts:
+            dict = dict_future.get()
+            for key in dict:
                 paths = dict[key]
                 for path in paths:
                     lines.append(path + " " + key)
-    delimiter = '\n'
-    f.writelines(delimiter.join(lines))
+        delimiter = '\n'
+        f.writelines(delimiter.join(lines))
 
 
-pool_num = 100
+pool_num = 50
 p = multiprocessing.Pool(processes=pool_num)
 keys = list(landmark_val_dict.keys())
 sub_size = len(keys) // pool_num
 results = []
 for i in range(pool_num):
-    results.append(p.apply_async(download_train_and_record, args=(keys[i * sub_size:(i + 1) * sub_size],)))
+    if i<pool_num-1:
+        results.append(p.apply_async(download_train_and_record, args=(keys[i * sub_size:(i + 1) * sub_size],)))
+    else:
+        results.append(p.apply_async(download_train_and_record, args=(keys[i * sub_size:],)))
+
+
 print('Waiting for all subprocesses done...')
 p.close()
 p.join()
 print('All subprocesses done.')
-
 
 dict_2_file(results, val_file)

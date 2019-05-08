@@ -169,7 +169,7 @@ class MyDataset(Dataset):
         while True:
             choice_label = random.choice(list(self.dict.keys()))
             files = self.dict[choice_label]
-            if len(files) > 2:
+            if len(files) < 4:
                 break
 
         should_get_same_class = random.randint(0, 1)
