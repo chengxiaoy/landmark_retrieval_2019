@@ -5,7 +5,7 @@ from torchvision import models
 from torch.optim import lr_scheduler
 
 import torch
-from kaggle.landmark_retrieval.function import *
+from function import *
 import numpy as np
 from PIL import Image
 from torchvision.transforms import transforms
@@ -51,7 +51,7 @@ def image_loader(image_name):
 class SiameseNetwork(nn.Module):
     def __init__(self, pretrained=True):
         super(SiameseNetwork, self).__init__()
-        self.pretrained_model = models.resnet34(pretrained=pretrained)
+        self.pretrained_model = models.resnet50(pretrained=pretrained)
         self.cnn1 = nn.Sequential(*list(self.pretrained_model.children())[:-2])
         self.spp = nn.AdaptiveMaxPool2d(20)
         self.pool = rmac
@@ -71,7 +71,7 @@ class SiameseNetwork(nn.Module):
         return output1, output2
 
     def __repr__(self):
-        return self.__class__.__name__ + '(resnet34+rmac+l2n)'
+        return self.__class__.__name__ + '(resnet50+rmac+l2n)'
 
 
 class ContrastiveLoss(nn.Module):

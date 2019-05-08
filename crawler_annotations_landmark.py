@@ -99,7 +99,7 @@ def download_train_and_record(keys):
         paths = []
         for url in urls:
             try:
-                path = download_image(url, "finetuning_landmark_train_data/")
+                path = download_image(url, "finetuning_landmark_val_data/")
                 paths.append(path)
             except Exception as e:
                 print("download url {} failed {}".format(url, e))
@@ -111,16 +111,17 @@ def dict_2_file(dicts, file_path):
     lines = []
     with open(file_path, "w") as f:
         for dict in dicts:
-            for key in dict:
+            for key in dict.get():
                 paths = dict[key]
                 for path in paths:
                     lines.append(path + " " + key)
-    f.writelines(lines)
+    delimiter = '\n'
+    f.writelines(delimiter.join(lines))
 
 
 pool_num = 100
 p = multiprocessing.Pool(processes=pool_num)
-keys = list(landmark_train_dict.keys())
+keys = list(landmark_val_dict.keys())
 sub_size = len(keys) // pool_num
 results = []
 for i in range(pool_num):
@@ -131,4 +132,4 @@ p.join()
 print('All subprocesses done.')
 
 
-dict_2_file(results, train_file)
+dict_2_file(results, val_file)
