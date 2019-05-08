@@ -18,6 +18,8 @@ import random
 import copy
 import os
 
+# torch.multiprocessing.set_start_method("spawn")
+
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
 
@@ -167,7 +169,7 @@ class MyDataset(Dataset):
         while True:
             choice_label = random.choice(list(self.dict.keys()))
             files = self.dict[choice_label]
-            if len(files) < 4:
+            if len(files) > 3:
                 break
 
         should_get_same_class = random.randint(0, 1)
@@ -267,11 +269,11 @@ class siames_model:
 
     def fine_tune_pretrained_model(self):
         train_data = MyDataset(train_dict, should_invert=False)
-        train_dataloader = DataLoader(dataset=train_data, shuffle=True, num_workers=4,
+        train_dataloader = DataLoader(dataset=train_data, shuffle=True, num_workers=0,
                                       batch_size=Config.train_batch_size)
         test_data = MyDataset(val_dict
                               , should_invert=False)
-        test_dataloader = DataLoader(dataset=test_data, shuffle=True, num_workers=4, batch_size=Config.test_batch_size)
+        test_dataloader = DataLoader(dataset=test_data, shuffle=True, num_workers=0, batch_size=Config.test_batch_size)
         net = SiameseNetwork().to(device)
         criterion = ContrastiveLoss()
         optimizer = optim.Adam(net.parameters(), lr=0.0005)
