@@ -100,7 +100,8 @@ def download_train_and_record(keys):
         for url in urls:
             try:
                 path = download_image(url, "finetuning_landmark_val_data/")
-                paths.append(path)
+                if path is not None:
+                    paths.append(path)
             except Exception as e:
                 print("download url {} failed {}".format(url, e))
             res_dict[key] = paths
