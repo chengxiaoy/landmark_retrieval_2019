@@ -45,15 +45,15 @@ def image_loader(image_name):
             ]
         )
         image = loader(im).unsqueeze(0)
-        image_cuda = image.to(device, torch.float)
-        images.append(image_cuda)
+        # image_cuda = image.to(device, torch.float)
+        images.append(image)
     return images[0]
 
 
 class SiameseNetwork(nn.Module):
     def __init__(self, pretrained=True):
         super(SiameseNetwork, self).__init__()
-        self.pretrained_model = models.resnet50(pretrained=pretrained)
+        self.pretrained_model = models.resnet101(pretrained=pretrained)
         self.cnn1 = nn.Sequential(*list(self.pretrained_model.children())[:-2])
         self.spp = nn.AdaptiveMaxPool2d(20)
         self.pool = rmac
@@ -61,7 +61,6 @@ class SiameseNetwork(nn.Module):
 
     def forward_once(self, x):
         x = self.cnn1(x)
-        print(x.shape)
         x = self.pool(x)
         return self.normal(x, ).squeeze(-1).squeeze(-1)
         # return self.normal(x, )
@@ -73,7 +72,7 @@ class SiameseNetwork(nn.Module):
         return output1, output2
 
     def __repr__(self):
-        return self.__class__.__name__ + '(resnet50+rmac+l2n)'
+        return self.__class__.__name__ + '(resnet101+rmac+l2n)'
 
 
 class ContrastiveLoss(nn.Module):
@@ -102,7 +101,7 @@ class Config():
     test_txt = 'annotation_clean_val.txt'
     train_batch_size = 32
     test_batch_size = 16
-    train_number_epochs = 1000
+    train_number_epochs = 10
 
 
 def get_label(file_path):
@@ -177,7 +176,7 @@ class MyDataset(Dataset):
             file1, file2 = random.sample(files, k=2)
             img0 = image_loader(file1)
             img1 = image_loader(file2)
-            return img0, img1, torch.from_numpy(np.array([False], dtype=np.float32))
+            return img0, img1, torch.from_numpy(np.array([0], dtype=np.float32))
         else:
             choice_label_2 = random.choice(list(self.dict.keys()))
             while choice_label_2 == choice_label:
@@ -187,10 +186,10 @@ class MyDataset(Dataset):
             file2 = random.choice(files_2)
             img0 = image_loader(file1)
             img1 = image_loader(file2)
-            return img0, img1, torch.from_numpy(np.array([True], dtype=np.float32))
+            return img0, img1, torch.from_numpy(np.array([1], dtype=np.float32))
 
     def __len__(self):
-        return self.length
+        return self.length//10
 
 
 # Training
@@ -220,25 +219,23 @@ def train_model(model, criterion, optimizer, scheduler, dataloaders, dataset_siz
             # Iterate over version5_gray_data_2W_top3-0.7.
             for i, data in enumerate(dataloaders[phase]):
                 img0, img1, label = data
-                img0, img1, label = img0.to(device), img1.to(device), label.to(device)
-
+                nq = len(img0)
                 # zero the parameter gradients
                 optimizer.zero_grad()
-
                 # forward
                 # track history if only in train
                 with torch.set_grad_enabled(phase == 'train'):
-                    output1, output2 = model(img0, img1)
+                    for q in range(nq):
+                        output1, output2 = model(img0[q].to(device), img1[q].to(device))
+                        loss_contrastive = criterion(output1, output2, label[q].to(device))
 
-                    loss_contrastive = criterion(output1, output2, label)
+                        # backward + optimize only if in training phase
+                        if phase == 'train':
+                            loss_contrastive.backward()
+                        # statistics
+                        running_loss += loss_contrastive.data.cpu().item()
 
-                    # backward + optimize only if in training phase
-                    if phase == 'train':
-                        loss_contrastive.backward()
-                        optimizer.step()
-
-                # statistics
-                running_loss += loss_contrastive.item()
+                    optimizer.step()
 
             epoch_loss = running_loss / dataset_sizes[phase]
 
@@ -263,10 +260,11 @@ def train_model(model, criterion, optimizer, scheduler, dataloaders, dataset_siz
     return model
 
 
-def collate_tuples(batch):
+def collate_triples(batch):
     if len(batch) == 1:
-        return [batch[0][0]], [batch[0][1]]
-    return [batch[i][0] for i in range(len(batch))], [batch[i][1] for i in range(len(batch))]
+        return [batch[0][0]], [batch[0][1]], [batch[0][2]]
+    return [batch[i][0] for i in range(len(batch))], [batch[i][1] for i in range(len(batch))], [batch[i][2] for i in
+                                                                                                range(len(batch))]
 
 
 class siames_model:
@@ -275,19 +273,18 @@ class siames_model:
 
     def fine_tune_pretrained_model(self):
         train_data = MyDataset(train_dict, should_invert=False)
-        train_dataloader = DataLoader(dataset=train_data, shuffle=True, num_workers=0,
-                                      batch_size=Config.train_batch_size, collate_fn=collate_tuples)
-        test_data = MyDataset(val_dict
-                              , should_invert=False)
-        test_dataloader = DataLoader(dataset=test_data, shuffle=True, num_workers=0, batch_size=Config.test_batch_size,
-                                     collate_fn=collate_tuples)
+        train_dataloader = DataLoader(dataset=train_data, shuffle=True, num_workers=4,
+                                      batch_size=Config.train_batch_size, collate_fn=collate_triples)
+        test_data = MyDataset(val_dict, should_invert=False)
+        test_dataloader = DataLoader(dataset=test_data, shuffle=True, num_workers=4, batch_size=Config.test_batch_size,
+                                     collate_fn=collate_triples)
         net = SiameseNetwork().to(device)
         criterion = ContrastiveLoss()
         optimizer = optim.Adam(net.parameters(), lr=0.0005)
-        exp_lr_scheduler = lr_scheduler.StepLR(optimizer, step_size=100, gamma=0.1)
+        exp_lr_scheduler = lr_scheduler.StepLR(optimizer, step_size=1000, gamma=0.1)
         dataloaders = {"train": train_dataloader, "val": test_dataloader}
         dataset_sizes = {"train": len(train_data), "val": len(test_data)}
-        train_model(net, criterion, optimizer, exp_lr_scheduler, dataloaders, dataset_sizes, 1000)
+        train_model(net, criterion, optimizer, exp_lr_scheduler, dataloaders, dataset_sizes, Config.train_number_epochs)
 
     def extract_feature(self, image_path, finetuning=False):
         img = image_loader(image_path)

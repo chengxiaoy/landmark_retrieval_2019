@@ -33,15 +33,10 @@ def DownloadImage(key_url):
     try:
         # response = urllib2.urlopen(url)
         # image_data = response.read()
-        headers = {
-            'User-Agent': 'Mozilla/4.0(compatible;MSIE 5.5;Windows NT)', }
+        headers = {'User-Agent': 'Mozilla/4.0(compatible;MSIE 5.5;Windows NT)', }
+        proxies = {"http": "socks5://127.0.0.1:1080", 'https': 'socks5://127.0.0.1:1080'}
+        r = requests.get(url, stream=True, headers=headers, proxies=proxies, timeout=5)
 
-        proxies = {
-            "http": "socks5://127.0.0.1:1080",
-            'https': 'socks5://127.0.0.1:1080'
-        }
-
-        r = requests.get(url, stream=True, headers=headers, proxies=proxies, timeout=3)
 
     except:
         print('Warning: Could not download image %s from %s' % (key, url))
@@ -50,7 +45,9 @@ def DownloadImage(key_url):
     try:
         pil_image = Image.open(BytesIO(r.content))
     except:
+        print("request status_code %s" % str(r.status_code))
         print('Warning: Failed to parse image %s' % key)
+
         return
 
     try:
