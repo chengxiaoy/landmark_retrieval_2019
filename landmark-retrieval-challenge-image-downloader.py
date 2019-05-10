@@ -10,7 +10,6 @@
 
 import sys, os, multiprocessing, requests, csv
 from PIL import Image
-from io import StringIO
 from io import BytesIO
 
 
@@ -33,7 +32,7 @@ def DownloadImage(key_url):
     try:
         # response = urllib2.urlopen(url)
         # image_data = response.read()
-        headers = {'User-Agent': 'Mozilla/4.0(compatible;MSIE 5.5;Windows NT)', }
+        headers = {'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_13_4) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/74.0.3729.131 Safari/537.36', }
         proxies = {"http": "socks5://127.0.0.1:1080", 'https': 'socks5://127.0.0.1:1080'}
         r = requests.get(url, stream=True, headers=headers, proxies=proxies, timeout=5)
 
