@@ -253,7 +253,7 @@ def train_model(model, criterion, optimizer, scheduler, dataloaders, num_epochs=
 
                 nq = len(input)  # number of training tuples
                 ni = len(input[0])  # number of images per tuple
-
+                optimizer.zero_grad()
                 for q in range(nq):
                     # output = torch.zeros(model.meta['outputdim'], ni).cuda()
                     output = torch.zeros(2048, ni).cuda()
@@ -352,6 +352,9 @@ if __name__ == '__main__':
     train_dict = get_label_dict_from_txt(Config.train_txt)
     model = siames_model('resnet50.pth', finetuning=False)
     print(str(model.net))
+    # feature = model.extract_feature("head.JPG")
+    # print(feature)
+    # print(np.dot(feature,feature.T))
     since = time.time()
     model.fine_tune_pretrained_model()
     print("fine-tuning used {} s".format(str(time.time() - since)))
