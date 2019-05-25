@@ -6,8 +6,11 @@ import torch
 import torch.nn.functional as F
 
 
-def rmac(x, L=3, eps=1e-6):
+def gem(x, p=3, eps=1e-6):
+    return F.avg_pool2d(x.clamp(min=eps).pow(p), (x.size(-2), x.size(-1))).pow(1. / p)
 
+
+def rmac(x, L=3, eps=1e-6):
     ovr = 0.4  # desired overlap of neighboring regions
     steps = torch.Tensor([2, 3, 4, 5, 6, 7])  # possible regions for the long dimension
 

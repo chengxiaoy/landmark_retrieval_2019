@@ -17,8 +17,7 @@ import linecache
 import random
 import copy
 import os
-
-# torch.multiprocessing.set_start_method("spawn")
+from sklearn.preprocessing import normalize as sknormalize
 
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
@@ -28,7 +27,7 @@ def image_loader(image_name):
     im = im.convert('RGB')
     im_size_hw = np.array(im.size[::-1])
 
-    max_side_lengths = [1050]
+    max_side_lengths = [512]
     images = []
     for max_side_length in max_side_lengths:
         ratio = float(max_side_length) / np.max(im_size_hw)
@@ -50,13 +49,36 @@ def image_loader(image_name):
     return images[0]
 
 
+def image_loader_eval(image_name):
+    im = Image.open(image_name)
+    im = im.convert('RGB')
+    im_size_hw = np.array(im.size[::-1])
+
+    max_side_lengths = [550, 800, 1050]
+    images = []
+    for max_side_length in max_side_lengths:
+        ratio = float(max_side_length) / np.max(im_size_hw)
+        new_size = tuple(np.round(im_size_hw * ratio.astype(float)).astype(np.int32))
+        # fake batch dimension required to fit network's input dimensions
+        loader = transforms.Compose(
+            [
+                # transforms.Grayscale(num_output_channels=3),
+                transforms.Resize(new_size),
+                transforms.ToTensor(),
+                transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
+            ]
+        )
+        image = loader(im).unsqueeze(0)
+        images.append(image)
+    return images
+
+
 class SiameseNetwork(nn.Module):
     def __init__(self, pretrained=True):
         super(SiameseNetwork, self).__init__()
-        self.pretrained_model = models.resnet101(pretrained=pretrained)
+        self.pretrained_model = models.resnet50(pretrained=pretrained)
         self.cnn1 = nn.Sequential(*list(self.pretrained_model.children())[:-2])
-        self.spp = nn.AdaptiveMaxPool2d(20)
-        self.pool = rmac
+        self.pool = gem
         self.normal = nn.functional.normalize
 
     def forward_once(self, x):
@@ -72,7 +94,7 @@ class SiameseNetwork(nn.Module):
         return output1, output2
 
     def __repr__(self):
-        return self.__class__.__name__ + '(resnet101+rmac+l2n)'
+        return self.__class__.__name__ + '(resnet50+gem+l2n+lr)'
 
 
 class ContrastiveLoss(nn.Module):
@@ -81,7 +103,7 @@ class ContrastiveLoss(nn.Module):
     Based on: http://yann.lecun.com/exdb/publis/pdf/hadsell-chopra-lecun-06.pdf
     """
 
-    def __init__(self, margin=2.0):
+    def __init__(self, margin=0.75):
         super(ContrastiveLoss, self).__init__()
         self.margin = margin
 
@@ -94,14 +116,11 @@ class ContrastiveLoss(nn.Module):
 
 
 class Config():
-    root = '/Users/tezign/PycharmProjects/abracadabra/cy_cv/finetuning/'
-    train_data_dirs = ["../valid_data_h_risk/", "../valid_data_l_risk/"]
-    test_data_dirs = [""]
     train_txt = 'annotation_clean_train.txt'
     test_txt = 'annotation_clean_val.txt'
-    train_batch_size = 32
-    test_batch_size = 16
-    train_number_epochs = 10
+    train_batch_size = 5
+    test_batch_size = 5
+    train_number_epochs = 100
 
 
 def get_label(file_path):
@@ -145,10 +164,6 @@ def get_label_dict_from_txt(txt_file):
     return pic_dict
 
 
-train_dict = get_label_dict_from_txt(Config.train_txt)
-val_dict = get_label_dict_from_txt(Config.test_txt)
-
-
 class MyDataset(Dataset):
 
     def __init__(self, dict, transform=None, target_transform=None, should_invert=False):
@@ -168,7 +183,7 @@ class MyDataset(Dataset):
         while True:
             choice_label = random.choice(list(self.dict.keys()))
             files = self.dict[choice_label]
-            if len(files) > 3:
+            if len(files) > 10:
                 break
 
         should_get_same_class = random.randint(0, 1)
@@ -189,7 +204,8 @@ class MyDataset(Dataset):
             return img0, img1, torch.from_numpy(np.array([1], dtype=np.float32))
 
     def __len__(self):
-        return self.length//10
+        # return 2000
+        return self.length
 
 
 # Training
@@ -207,6 +223,7 @@ def train_model(model, criterion, optimizer, scheduler, dataloaders, dataset_siz
 
         # Each epoch has a training and validation phase
         for phase in ['train', 'val']:
+            max_batchs = {'train': 400, 'val': 100}
             if phase == 'train':
                 scheduler.step()
                 model.train()  # Set model to training mode
@@ -215,9 +232,10 @@ def train_model(model, criterion, optimizer, scheduler, dataloaders, dataset_siz
 
             running_loss = 0.0
             running_corrects = 0
-
+            batchs = 0
             # Iterate over version5_gray_data_2W_top3-0.7.
             for i, data in enumerate(dataloaders[phase]):
+                batchs = batchs + 1
                 img0, img1, label = data
                 nq = len(img0)
                 # zero the parameter gradients
@@ -236,8 +254,9 @@ def train_model(model, criterion, optimizer, scheduler, dataloaders, dataset_siz
                         running_loss += loss_contrastive.data.cpu().item()
 
                     optimizer.step()
-
-            epoch_loss = running_loss / dataset_sizes[phase]
+                if batchs == max_batchs[phase]:
+                    break
+            epoch_loss = running_loss / (batchs * 5)
 
             print('{} Loss: {:.4f} '.format(phase, epoch_loss))
 
@@ -268,10 +287,27 @@ def collate_triples(batch):
 
 
 class siames_model:
-    def __init__(self):
-        pass
+    def __init__(self, file_path, finetuning=True):
+        if not finetuning:
+            self.net = SiameseNetwork().to(device).eval()
+        else:
+            net = SiameseNetwork(False).to(device)
+            net.load_state_dict(torch.load(file_path))
+            self.net = net.eval()
+
+    def normalize(self, x, copy=False):
+        """
+        A helper function that wraps the function of the same name in sklearn.
+        This helper handles the case of a single column vector.
+        """
+        if type(x) == np.ndarray and len(x.shape) == 1:
+            return np.squeeze(sknormalize(x.reshape(1, -1), copy=copy))
+        else:
+            return sknormalize(x, copy=copy)
 
     def fine_tune_pretrained_model(self):
+        train_dict = get_label_dict_from_txt(Config.train_txt)
+        val_dict = get_label_dict_from_txt(Config.test_txt)
         train_data = MyDataset(train_dict, should_invert=False)
         train_dataloader = DataLoader(dataset=train_data, shuffle=True, num_workers=4,
                                       batch_size=Config.train_batch_size, collate_fn=collate_triples)
@@ -280,27 +316,28 @@ class siames_model:
                                      collate_fn=collate_triples)
         net = SiameseNetwork().to(device)
         criterion = ContrastiveLoss()
-        optimizer = optim.Adam(net.parameters(), lr=0.0005)
-        exp_lr_scheduler = lr_scheduler.StepLR(optimizer, step_size=1000, gamma=0.1)
+        optimizer = optim.Adam(net.parameters(), lr=5e-7, weight_decay=0.0003)
+
+        exp_decay = math.exp(-0.01)
+        scheduler = torch.optim.lr_scheduler.ExponentialLR(optimizer, gamma=exp_decay)
+        # exp_lr_scheduler = lr_scheduler.StepLR(optimizer, step_size=7, gamma=0.1)
         dataloaders = {"train": train_dataloader, "val": test_dataloader}
         dataset_sizes = {"train": len(train_data), "val": len(test_data)}
-        train_model(net, criterion, optimizer, exp_lr_scheduler, dataloaders, dataset_sizes, Config.train_number_epochs)
+        train_model(net, criterion, optimizer, scheduler, dataloaders, dataset_sizes, Config.train_number_epochs)
 
-    def extract_feature(self, image_path, finetuning=False):
+    def extract_feature(self, image_path):
+
         img = image_loader(image_path)
-        if not finetuning:
-            net = SiameseNetwork().to(device).eval()
-        else:
-            net = SiameseNetwork(False).to(device)
-            net.load_state_dict(torch.load(str(net) + ".pth"))
-            net.eval()
-        feature = net.forward_once(img).data.cpu().numpy()
-        print(feature)
-        return feature
+        feature = self.net.forward_once(img.to(device)).data.cpu().numpy()
+        return feature[0]
 
 
 if __name__ == '__main__':
-    model = siames_model()
+    val_dict = get_label_dict_from_txt(Config.test_txt)
+    train_dict = get_label_dict_from_txt(Config.train_txt)
+    model = siames_model('resnet50.pth', finetuning=False)
+    print(str(model.net))
     since = time.time()
     model.fine_tune_pretrained_model()
-    model.extract_feature("404.jpg", True)
+    print("fine-tuning used {} s".format(str(time.time() - since)))
+
