@@ -90,7 +90,7 @@ class SiameseNetwork(nn.Module):
         return output1, output2
 
     def __repr__(self):
-        return self.__class__.__name__ + '(resnet50+gem+l2n+lr)'
+        return self.__class__.__name__ + '(resnet50_gem)'
 
 
 class ContrastiveLossNew(nn.Module):
@@ -102,7 +102,7 @@ class ContrastiveLossNew(nn.Module):
         label: -1 for query, 1 for corresponding positive, 0 for corresponding negative
         margin: contrastive loss margin. Default: 0.7
 
-    >>> contrastive_loss = ContrastiveLoss(margin=0.7)
+    >>> contrastive_loss = ContrastiveLossNew(margin=0.7)
     >>> input = torch.randn(128, 35, requires_grad=True)
     >>> label = torch.Tensor([-1, 1, 0, 0, 0, 0, 0] * 5)
     >>> output = contrastive_loss(input, label)
@@ -250,7 +250,6 @@ def train_model(model, criterion, optimizer, scheduler, dataloaders, num_epochs=
             running_loss = 0.0
             # Iterate over version5_gray_data_2W_top3-0.7.
             for i, (input, target) in enumerate(dataloaders[phase]):
-
                 nq = len(input)  # number of training tuples
                 ni = len(input[0])  # number of images per tuple
                 optimizer.zero_grad()
@@ -270,10 +269,15 @@ def train_model(model, criterion, optimizer, scheduler, dataloaders, num_epochs=
                     loss = criterion(output, target[q].cuda())
                     if phase == 'train':
                         loss.backward()
-                    running_loss += loss.data.cpu().item()
+                    # print("phase {} , {} batch".format(phase, i))
+                    batch_loss = loss.data.cpu().item()
+                    # print("loss is {}".format(batch_loss))
+                    running_loss += batch_loss
                 optimizer.step()
             # 5 is batch_size
-            epoch_loss = running_loss / (len(dataloaders[phase]) * 5)
+            # print("size {}",format(len(dataloaders[phase])))
+
+            epoch_loss = running_loss / (len(dataloaders[phase])*5)
 
             print('{} Loss: {:.4f} '.format(phase, epoch_loss))
 
@@ -332,12 +336,11 @@ class siames_model:
                                      collate_fn=collate_triples)
         net = SiameseNetwork().to(device)
         criterion = ContrastiveLossNew()
-        optimizer = optim.Adam(net.parameters(), lr=5e-7, weight_decay=0.0003)
+        optimizer = optim.Adam(net.parameters(), lr=0.0000005, weight_decay=0.0003)
         exp_decay = math.exp(-0.01)
         scheduler = torch.optim.lr_scheduler.ExponentialLR(optimizer, gamma=exp_decay)
         # exp_lr_scheduler = lr_scheduler.StepLR(optimizer, step_size=7, gamma=0.1)
         dataloaders = {"train": train_dataloader, "val": test_dataloader}
-        dataset_sizes = {"train": len(train_data), "val": len(test_data)}
         train_model(net, criterion, optimizer, scheduler, dataloaders, Config.train_number_epochs)
 
     def extract_feature(self, image_path):
@@ -348,8 +351,6 @@ class siames_model:
 
 
 if __name__ == '__main__':
-    val_dict = get_label_dict_from_txt(Config.test_txt)
-    train_dict = get_label_dict_from_txt(Config.train_txt)
     model = siames_model('resnet50.pth', finetuning=False)
     print(str(model.net))
     # feature = model.extract_feature("head.JPG")
