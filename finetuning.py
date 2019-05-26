@@ -177,26 +177,9 @@ class TupleDataset(Dataset):
         :param dict:
         :param nq: negative nums
         """
-        self.dict = self.filter_dict(dict, 10)
+        self.dict = dict
         self.key_list = list(dict.keys())
         self.nq = nq
-
-    def filter_dict(self, dict, k):
-        """
-        将样本少于k的标签删除
-        :param dict:
-        :param k:
-        :return:
-        """
-        rm_keys = []
-        for key in dict:
-            if len(dict[key]) < k:
-                rm_keys.append(key)
-        for rm_key in rm_keys:
-            dict.pop(rm_key)
-
-        print("key size {}".format(len(dict)))
-        return dict
 
     def __getitem__(self, index):
         """
@@ -241,11 +224,12 @@ def train_model(model, criterion, optimizer, scheduler, dataloaders, num_epochs=
 
         # Each epoch has a training and validation phase
         for phase in ['train', 'val']:
-            if phase == 'train':
-                # scheduler.step()
-                model.train()  # Set model to training mode
-            else:
-                model.eval()  # Set model to evaluate mode
+            model.train()
+            # if phase == 'train':
+            #     # scheduler.step()
+            #     model.train()  # Set model to training mode
+            # else:
+            #     model.eval()  # Set model to evaluate mode
 
             running_loss = 0.0
             # Iterate over version5_gray_data_2W_top3-0.7.
@@ -277,7 +261,7 @@ def train_model(model, criterion, optimizer, scheduler, dataloaders, num_epochs=
             # 5 is batch_size
             # print("size {}",format(len(dataloaders[phase])))
 
-            epoch_loss = running_loss / (len(dataloaders[phase])*5)
+            epoch_loss = running_loss / (len(dataloaders[phase]) * 5)
 
             print('{} Loss: {:.4f} '.format(phase, epoch_loss))
 
@@ -328,6 +312,8 @@ class siames_model:
     def fine_tune_pretrained_model(self):
         train_dict = get_label_dict_from_txt(Config.train_txt)
         val_dict = get_label_dict_from_txt(Config.test_txt)
+        train_dict = self.filter_dict(train_dict, 10)
+        val_dict = self.filter_dict(val_dict, 10)
         train_data = TupleDataset(train_dict)
         train_dataloader = DataLoader(dataset=train_data, shuffle=True, num_workers=4,
                                       batch_size=Config.train_batch_size, collate_fn=collate_triples)
@@ -344,10 +330,43 @@ class siames_model:
         train_model(net, criterion, optimizer, scheduler, dataloaders, Config.train_number_epochs)
 
     def extract_feature(self, image_path):
+        # very import! default is what?
+        self.net.train()
 
         img = image_loader(image_path)
         feature = self.net.forward_once(img.to(device)).data.cpu().numpy()
         return feature[0]
+
+    def split_dict(self, dict):
+        keys = []
+        val_dict = {}
+
+        i = 0
+        for key in dict:
+            if i < 100:
+                keys.append(key)
+                val_dict[key] = dict[key]
+                i = i + 1
+        for key in keys:
+            dict.pop(key)
+        return dict, val_dict
+
+    def filter_dict(self, dict, k):
+        """
+        将样本少于k的标签删除
+        :param dict:
+        :param k:
+        :return:
+        """
+        rm_keys = []
+        for key in dict:
+            if len(dict[key]) < k:
+                rm_keys.append(key)
+        for rm_key in rm_keys:
+            dict.pop(rm_key)
+
+        print("key size {}".format(len(dict)))
+        return dict
 
 
 if __name__ == '__main__':
