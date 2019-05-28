@@ -386,11 +386,11 @@ def set_batchnorm_eval(m):
 
 
 if __name__ == '__main__':
-    model = siames_model('SiameseNetwork(resnet50_gem_eval).pth', finetuning=False)
+    model = siames_model('SiameseNetwork(resnet50_gem_eval).pth', finetuning=True)
     print(str(model.net))
     feature = model.extract_feature("test.jpg")
     print(feature)
     print(np.dot(feature,feature.T))
-    since = time.time()
-    model.fine_tune_pretrained_model()
-    print("fine-tuning used {} s".format(str(time.time() - since)))
+    # since = time.time()
+    # model.fine_tune_pretrained_model()
+    # print("fine-tuning used {} s".format(str(time.time() - since)))
