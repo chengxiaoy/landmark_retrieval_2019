@@ -34,8 +34,8 @@ def image_loader(image_name):
             [
 
                 transforms.Resize(new_size),
-                transforms.RandomHorizontalFlip(),
-                transforms.RandomVerticalFlip(),
+                # transforms.RandomHorizontalFlip(),
+                # transforms.RandomVerticalFlip(),
                 transforms.ToTensor(),
                 transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
             ]
@@ -313,14 +313,9 @@ class siames_model:
     def fine_tune_pretrained_model(self):
         train_dict = get_label_dict_from_txt(Config.train_txt)
         val_dict = get_label_dict_from_txt(Config.test_txt)
-
-        train_dict = self.filter_dict(train_dict, 10)
-
-        val_dict = self.filter_dict(val_dict, 10)
-
-        train_data = TupleDataset(train_dict)
         train_dict = self.filter_dict(train_dict, 10)
         val_dict = self.filter_dict(val_dict, 10)
+
         train_data = TupleDataset(train_dict)
         train_dataloader = DataLoader(dataset=train_data, shuffle=True, num_workers=4,
                                       batch_size=Config.train_batch_size, collate_fn=collate_triples)
@@ -373,6 +368,7 @@ class siames_model:
         print("key size {}".format(len(dict)))
         return dict
 
+
 def set_batchnorm_eval(m):
     classname = m.__class__.__name__
     if classname.find('BatchNorm') != -1:
@@ -387,12 +383,14 @@ def set_batchnorm_eval(m):
         # # that is why next two lines are commented
         # for p in m.parameters():
         # p.requires_grad = False
+
+
 if __name__ == '__main__':
-    model = siames_model('resnet50.pth', finetuning=False)
+    model = siames_model('SiameseNetwork(resnet50_gem_eval).pth', finetuning=False)
     print(str(model.net))
-    # feature = model.extract_feature("head.JPG")
-    # print(feature)
-    # print(np.dot(feature,feature.T))
+    feature = model.extract_feature("test.jpg")
+    print(feature)
+    print(np.dot(feature,feature.T))
     since = time.time()
     model.fine_tune_pretrained_model()
     print("fine-tuning used {} s".format(str(time.time() - since)))
