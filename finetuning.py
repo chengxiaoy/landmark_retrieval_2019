@@ -82,7 +82,6 @@ class SiameseNetwork(nn.Module):
         x = self.cnn1(x)
         x = self.pool(x)
         return self.normal(x, ).squeeze(-1).squeeze(-1)
-        # return self.normal(x, )
 
     def forward(self, input1, input2):
         output1 = self.forward_once(input1)
@@ -91,25 +90,7 @@ class SiameseNetwork(nn.Module):
         return output1, output2
 
     def __repr__(self):
-        return self.__class__.__name__ + '(resnet50+gem+l2n+lr)'
-
-
-class ContrastiveLoss(nn.Module):
-    """
-    Contrastive loss function.
-    Based on: http://yann.lecun.com/exdb/publis/pdf/hadsell-chopra-lecun-06.pdf
-    """
-
-    def __init__(self, margin=0.75):
-        super(ContrastiveLoss, self).__init__()
-        self.margin = margin
-
-    def forward(self, output1, output2, label):
-        euclidean_distance = F.pairwise_distance(output1, output2)
-        loss_contrastive = torch.mean((1 - label) * torch.pow(euclidean_distance, 2) +
-                                      (label) * torch.pow(torch.clamp(self.margin - euclidean_distance, min=0.0), 2))
-
-        return loss_contrastive
+        return self.__class__.__name__ + '(resnet50_gem_eval)'
 
 
 class ContrastiveLossNew(nn.Module):
@@ -121,7 +102,7 @@ class ContrastiveLossNew(nn.Module):
         label: -1 for query, 1 for corresponding positive, 0 for corresponding negative
         margin: contrastive loss margin. Default: 0.7
 
-    >>> contrastive_loss = ContrastiveLoss(margin=0.7)
+    >>> contrastive_loss = ContrastiveLossNew(margin=0.7)
     >>> input = torch.randn(128, 35, requires_grad=True)
     >>> label = torch.Tensor([-1, 1, 0, 0, 0, 0, 0] * 5)
     >>> output = contrastive_loss(input, label)
@@ -189,60 +170,49 @@ def get_label_dict_from_txt(txt_file):
     return pic_dict
 
 
-
-
 class TupleDataset(Dataset):
+    def __init__(self, dict, nq=5):
+        """
 
-
-
-class MyDataset(Dataset):
-
-    def __init__(self, dict, transform=None, target_transform=None, should_invert=False):
-        self.transform = transform
-        self.target_transform = target_transform
-        self.should_invert = should_invert
+        :param dict:
+        :param nq: negative nums
+        """
         self.dict = dict
-        self.length = self.get_dict_value_length()
-
-    def get_dict_value_length(self):
-        length = 0
-        for key in self.dict:
-            length = length + len(self.dict[key])
-        return length
+        self.key_list = list(dict.keys())
+        self.nq = nq
 
     def __getitem__(self, index):
-        while True:
-            choice_label = random.choice(list(self.dict.keys()))
-            files = self.dict[choice_label]
-            if len(files) > 10:
-                break
+        """
+        return one query + 1 positive + n negative
+        :param index:
+        :return:
+        """
+        key = self.key_list[index]
+        query, positive = random.sample(self.dict[key], k=2)
+        items = []
+        items.append(query)
+        items.append(positive)
+        for i in range(self.nq):
+            n_key = random.choice(self.key_list)
+            while n_key == key:
+                n_key = random.choice(self.key_list)
+            items.append(random.choice(self.dict[n_key]))
 
-        should_get_same_class = random.randint(0, 1)
-        if should_get_same_class:
-            file1, file2 = random.sample(files, k=2)
-            img0 = image_loader(file1)
-            img1 = image_loader(file2)
-            return img0, img1, torch.from_numpy(np.array([0], dtype=np.float32))
-        else:
-            choice_label_2 = random.choice(list(self.dict.keys()))
-            while choice_label_2 == choice_label:
-                choice_label_2 = random.choice(list(self.dict.keys()))
-            files_2 = self.dict[choice_label_2]
-            file1 = random.choice(files)
-            file2 = random.choice(files_2)
-            img0 = image_loader(file1)
-            img1 = image_loader(file2)
-            return img0, img1, torch.from_numpy(np.array([1], dtype=np.float32))
+        target = torch.Tensor([-1, 1] + [0] * self.nq)
+
+        res = []
+        for item in items:
+            res.append(image_loader(item))
+        return res, target
 
     def __len__(self):
-        # return 2000
-        return self.length
+        return len(self.key_list)
 
 
 # Training
 
 
-def train_model(model, criterion, optimizer, scheduler, dataloaders, dataset_sizes, num_epochs=100):
+def train_model(model, criterion, optimizer, scheduler, dataloaders, num_epochs=100):
     since = time.time()
 
     best_model_wts = copy.deepcopy(model.state_dict())
@@ -254,40 +224,45 @@ def train_model(model, criterion, optimizer, scheduler, dataloaders, dataset_siz
 
         # Each epoch has a training and validation phase
         for phase in ['train', 'val']:
-            max_batchs = {'train': 400, 'val': 100}
+            # model.eval()
             if phase == 'train':
-                scheduler.step()
+                # scheduler.step()
                 model.train()  # Set model to training mode
+                model.apply(set_batchnorm_eval)
             else:
                 model.eval()  # Set model to evaluate mode
 
             running_loss = 0.0
-            running_corrects = 0
-            batchs = 0
             # Iterate over version5_gray_data_2W_top3-0.7.
-            for i, data in enumerate(dataloaders[phase]):
-                batchs = batchs + 1
-                img0, img1, label = data
-                nq = len(img0)
-                # zero the parameter gradients
+            for i, (input, target) in enumerate(dataloaders[phase]):
+                nq = len(input)  # number of training tuples
+                ni = len(input[0])  # number of images per tuple
                 optimizer.zero_grad()
-                # forward
-                # track history if only in train
-                with torch.set_grad_enabled(phase == 'train'):
-                    for q in range(nq):
-                        output1, output2 = model(img0[q].to(device), img1[q].to(device))
-                        loss_contrastive = criterion(output1, output2, label[q].to(device))
+                for q in range(nq):
+                    # output = torch.zeros(model.meta['outputdim'], ni).cuda()
+                    output = torch.zeros(2048, ni).cuda()
+                    for imi in range(ni):
+                        # compute output vector for image imi
+                        # output[:, imi] = model(input[q][imi].cuda()).squeeze()
+                        output[:, imi] = model.forward_once(input[q][imi].cuda())
 
-                        # backward + optimize only if in training phase
-                        if phase == 'train':
-                            loss_contrastive.backward()
-                        # statistics
-                        running_loss += loss_contrastive.data.cpu().item()
+                    # reducing memory consumption:
+                    # compute loss for this query tuple only
+                    # then, do backward pass for one tuple only
+                    # each backward pass gradients will be accumulated
+                    # the optimization step is performed for the full batch later
+                    loss = criterion(output, target[q].cuda())
+                    if phase == 'train':
+                        loss.backward()
+                    # print("phase {} , {} batch".format(phase, i))
+                    batch_loss = loss.data.cpu().item()
+                    # print("loss is {}".format(batch_loss))
+                    running_loss += batch_loss
+                optimizer.step()
+            # 5 is batch_size
+            # print("size {}",format(len(dataloaders[phase])))
 
-                    optimizer.step()
-                if batchs == max_batchs[phase]:
-                    break
-            epoch_loss = running_loss / (batchs * 5)
+            epoch_loss = running_loss / (len(dataloaders[phase]) * 5)
 
             print('{} Loss: {:.4f} '.format(phase, epoch_loss))
 
@@ -312,9 +287,8 @@ def train_model(model, criterion, optimizer, scheduler, dataloaders, dataset_siz
 
 def collate_triples(batch):
     if len(batch) == 1:
-        return [batch[0][0]], [batch[0][1]], [batch[0][2]]
-    return [batch[i][0] for i in range(len(batch))], [batch[i][1] for i in range(len(batch))], [batch[i][2] for i in
-                                                                                                range(len(batch))]
+        return [batch[0][0]], [batch[0][1]]
+    return [batch[i][0] for i in range(len(batch))], [batch[i][1] for i in range(len(batch))]
 
 
 class siames_model:
@@ -339,22 +313,25 @@ class siames_model:
     def fine_tune_pretrained_model(self):
         train_dict = get_label_dict_from_txt(Config.train_txt)
         val_dict = get_label_dict_from_txt(Config.test_txt)
-        train_data = MyDataset(train_dict, should_invert=False)
+
+        train_dict = self.filter_dict(train_dict, 10)
+
+        val_dict = self.filter_dict(val_dict, 10)
+
+        train_data = TupleDataset(train_dict)
         train_dataloader = DataLoader(dataset=train_data, shuffle=True, num_workers=4,
                                       batch_size=Config.train_batch_size, collate_fn=collate_triples)
-        test_data = MyDataset(val_dict, should_invert=False)
+        test_data = TupleDataset(val_dict)
         test_dataloader = DataLoader(dataset=test_data, shuffle=True, num_workers=4, batch_size=Config.test_batch_size,
                                      collate_fn=collate_triples)
         net = SiameseNetwork().to(device)
-        criterion = ContrastiveLoss()
-        optimizer = optim.Adam(net.parameters(), lr=5e-7, weight_decay=0.0003)
-
+        criterion = ContrastiveLossNew()
+        optimizer = optim.Adam(net.parameters(), lr=0.0000005, weight_decay=0.0003)
         exp_decay = math.exp(-0.01)
         scheduler = torch.optim.lr_scheduler.ExponentialLR(optimizer, gamma=exp_decay)
         # exp_lr_scheduler = lr_scheduler.StepLR(optimizer, step_size=7, gamma=0.1)
         dataloaders = {"train": train_dataloader, "val": test_dataloader}
-        dataset_sizes = {"train": len(train_data), "val": len(test_data)}
-        train_model(net, criterion, optimizer, scheduler, dataloaders, dataset_sizes, Config.train_number_epochs)
+        train_model(net, criterion, optimizer, scheduler, dataloaders, Config.train_number_epochs)
 
     def extract_feature(self, image_path):
 
@@ -362,12 +339,60 @@ class siames_model:
         feature = self.net.forward_once(img.to(device)).data.cpu().numpy()
         return feature[0]
 
+    def split_dict(self, dict):
+        keys = []
+        val_dict = {}
+
+        i = 0
+        for key in dict:
+            if i < 100:
+                keys.append(key)
+                val_dict[key] = dict[key]
+                i = i + 1
+        for key in keys:
+            dict.pop(key)
+        return dict, val_dict
+
+    def filter_dict(self, dict, k):
+        """
+        将样本少于k的标签删除
+        :param dict:
+        :param k:
+        :return:
+        """
+        rm_keys = []
+        for key in dict:
+            if len(dict[key]) < k:
+                rm_keys.append(key)
+        for rm_key in rm_keys:
+            dict.pop(rm_key)
+
+        print("key size {}".format(len(dict)))
+        return dict
+
+
+def set_batchnorm_eval(m):
+    classname = m.__class__.__name__
+    if classname.find('BatchNorm') != -1:
+        # freeze running mean and std:
+        # we do training one image at a time
+        # so the statistics would not be per batch
+        # hence we choose freezing (ie using imagenet statistics)
+        m.eval()
+        # # freeze parameters:
+        # # in fact no need to freeze scale and bias
+        # # they can be learned
+        # # that is why next two lines are commented
+        # for p in m.parameters():
+        # p.requires_grad = False
+
 
 if __name__ == '__main__':
-    val_dict = get_label_dict_from_txt(Config.test_txt)
-    train_dict = get_label_dict_from_txt(Config.train_txt)
     model = siames_model('resnet50.pth', finetuning=False)
     print(str(model.net))
+    # feature = model.extract_feature("head.JPG")
+    # print(feature)
+    # print(np.dot(feature,feature.T))
     since = time.time()
     model.fine_tune_pretrained_model()
     print("fine-tuning used {} s".format(str(time.time() - since)))
