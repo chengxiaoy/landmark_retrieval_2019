@@ -319,6 +319,9 @@ class siames_model:
         val_dict = self.filter_dict(val_dict, 10)
 
         train_data = TupleDataset(train_dict)
+        train_dict = self.filter_dict(train_dict, 10)
+        val_dict = self.filter_dict(val_dict, 10)
+        train_data = TupleDataset(train_dict)
         train_dataloader = DataLoader(dataset=train_data, shuffle=True, num_workers=4,
                                       batch_size=Config.train_batch_size, collate_fn=collate_triples)
         test_data = TupleDataset(val_dict)
@@ -370,7 +373,6 @@ class siames_model:
         print("key size {}".format(len(dict)))
         return dict
 
-
 def set_batchnorm_eval(m):
     classname = m.__class__.__name__
     if classname.find('BatchNorm') != -1:
@@ -385,8 +387,6 @@ def set_batchnorm_eval(m):
         # # that is why next two lines are commented
         # for p in m.parameters():
         # p.requires_grad = False
-
-
 if __name__ == '__main__':
     model = siames_model('resnet50.pth', finetuning=False)
     print(str(model.net))
