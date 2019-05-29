@@ -69,7 +69,6 @@ def download_file(filename):
         with open(filename, 'wb') as file:
             # 每128个流遍历一次
             for data in r.iter_content(128):
-                # 把流写入到文件，这个文件最后写入完成就是，selenium.png
                 file.write(data)  # data相当于一块一块数据写入到我们的图片文件中
         r.close()
         print("downloaded {}".format(filename))
@@ -84,3 +83,7 @@ for i in range(100):
 pool_num = 5
 p = multiprocessing.Pool(processes=pool_num)
 p.map(download_file, filenames)
+
+p.close()
+p.join()
+

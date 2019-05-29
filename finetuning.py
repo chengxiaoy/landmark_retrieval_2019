@@ -313,7 +313,9 @@ class siames_model:
     def fine_tune_pretrained_model(self):
         train_dict = get_label_dict_from_txt(Config.train_txt)
         val_dict = get_label_dict_from_txt(Config.test_txt)
+
         train_dict = self.filter_dict(train_dict, 10)
+
         val_dict = self.filter_dict(val_dict, 10)
 
         train_data = TupleDataset(train_dict)
