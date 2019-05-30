@@ -296,6 +296,7 @@ class siames_model:
         if not finetuning:
             self.net = SiameseNetwork().to(device).eval()
         else:
+            print("load finetuing model {}".format(file_path))
             net = SiameseNetwork(False).to(device)
             net.load_state_dict(torch.load(file_path))
             self.net = net.eval()
@@ -392,7 +393,7 @@ if __name__ == '__main__':
     print(str(model.net))
     feature = model.extract_feature("test.jpg")
     print(feature)
-    print(np.dot(feature,feature.T))
+    print(np.dot(feature, feature.T))
     # since = time.time()
     # model.fine_tune_pretrained_model()
     # print("fine-tuning used {} s".format(str(time.time() - since)))

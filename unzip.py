@@ -11,7 +11,7 @@ for file in files:
 if len(files) < 100:
     print("tar files num error ")
 
-dest_path = 'index_data/'
+dest_path = 'pic_data/'
 
 if not os.path.exists(dest_path):
     os.mkdir(dest_path)
