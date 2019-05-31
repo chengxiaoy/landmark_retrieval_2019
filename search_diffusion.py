@@ -5,9 +5,10 @@ import time
 from sklearn.decomposition import PCA
 from sklearn.preprocessing import normalize
 from sklearn.externals import joblib
+from multiprocessing import Pool
 
-query_file_path = "test_data.pkl"
-index_file_path = "index_data.pkl"
+query_file_path = "test_gem.pkl"
+index_file_path = "index_gem.pkl"
 
 query_images, query_features = joblib.load(query_file_path)
 index_images, index_features = joblib.load(index_file_path)
@@ -18,8 +19,8 @@ index_ids = [x.split("/")[-1].split(".")[0] for x in index_images]
 query_ids = np.array(query_ids)
 index_ids = np.array(index_ids)
 
-query_features = query_features.astype(np.float32)
-index_features = index_features.astype(np.float32)
+query_features = query_features.astype(np.float32).T
+index_features = index_features.astype(np.float32).T
 
 query_features = np.ascontiguousarray(query_features)
 index_features = np.ascontiguousarray(index_features)
@@ -35,7 +36,7 @@ def get_invert_index(feature):
     return gpu_index_flat
 
 
-recall_num = 1000
+recall_num = 1024
 print(" building index")
 since = time.time()
 invert_index = get_invert_index(index_features)
@@ -76,27 +77,48 @@ def get_diffusion_rank(Wn, X, Q):
     return cg_ranks
 
 
-dif = np.empty(I.shape)
+def rerank(I):
+    dif = np.empty(I.shape)
 
-for i, indexs in enumerate(I):
-    X = index_features[indexs].T
-    Q = query_features[[i]].T
-    Wn = buildGraph(X)
-    rank = get_diffusion_rank(Wn, X, Q)
-    indexs = indexs[rank[:, 0]]
-    dif[i, :] = indexs
+    for i, indexs in enumerate(I):
+        X = index_features[indexs].T
+        Q = query_features[[i]].T
+        Wn = buildGraph(X)
+        rank = get_diffusion_rank(Wn, X, Q)
+        indexs = indexs[rank[:, 0]]
+        dif[i, :] = indexs
 
-I = dif
+    I = dif
+    I = I.astype(np.int32)
+    return I
 
-joblib.dump(I, "index.pkl")
 
-I = I.astype(np.int32)
+res = []
+pool_num = 5
+p = Pool(pool_num)
+size = I.shape(0) // pool_num + 1
+query_ids_list = []
+for i in range(pool_num):
+    res.append(p.apply_async(rerank, (I[i * size:(i + 1) * size, :])))
+    query_ids_list.append(query_ids[i * size:(i + 1) * size])
 
-with open("submit_dif.csv", "w") as f:
+p.close()
+p.join()
+
+
+f_list = []
+for f in res:
+    f_list.append(f.get())
+
+with open("submit_pool_dif.csv", "w") as f:
     f.write("id,images\n")
-    for i, indexs in enumerate(I):
-        f.write(query_ids[i] + "," + " ".join(index_ids[indexs[0:100]]) + "\n")
+    for future, ids in zip(f_list, query_ids_list):
+        for i, indexs in enumerate(future):
+            f.write(ids[i] + "," + " ".join(index_ids[indexs[0:100]]) + "\n")
 
-with open("baseline_dif.csv", "w") as f:
-    for i, indexs in enumerate(I):
-        f.write(query_ids[i] + "," + " ".join(index_ids[indexs]) + "\n")
+with open("baseline_pool_dif.csv", "w") as f:
+    for future, ids in zip(f_list, query_ids_list):
+        for i, indexs in enumerate(future):
+            f.write(ids[i] + "," + " ".join(index_ids[indexs]) + "\n")
+
+

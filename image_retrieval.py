@@ -27,7 +27,7 @@ def image_loader(image_name):
     im = im.convert('RGB')
     im_size_hw = np.array(im.size[::-1])
 
-    max_side_lengths = [512]
+    max_side_lengths = [800]
     images = []
     for max_side_length in max_side_lengths:
         ratio = float(max_side_length) / np.max(im_size_hw)
@@ -76,9 +76,9 @@ def image_loader_eval(image_name):
 class SiameseNetwork(nn.Module):
     def __init__(self, pretrained=True):
         super(SiameseNetwork, self).__init__()
-        self.pretrained_model = models.resnet50(pretrained=pretrained)
+        self.pretrained_model = models.resnet101(pretrained=pretrained)
         self.cnn1 = nn.Sequential(*list(self.pretrained_model.children())[:-2])
-        self.pool = gem
+        self.pool = rmac
         self.normal = nn.functional.normalize
 
     def forward_once(self, x):
@@ -94,7 +94,24 @@ class SiameseNetwork(nn.Module):
         return output1, output2
 
     def __repr__(self):
-        return self.__class__.__name__ + '(resnet50+gem+l2n+lr)'
+        return self.__class__.__name__ + '(resnet101+rmac+l2n)'
+
+
+class TripletLoss(nn.Module):
+    """
+    Triplet loss
+    Takes embeddings of an anchor sample, a positive sample and a negative sample
+    """
+
+    def __init__(self, margin=2.0):
+        super(TripletLoss, self).__init__()
+        self.margin = margin
+
+    def forward(self, anchor, positive, negative, size_average=True):
+        distance_positive = (anchor - positive).pow(2).sum(1)  # .pow(.5)
+        distance_negative = (anchor - negative).pow(2).sum(1)  # .pow(.5)
+        losses = F.relu(distance_positive - distance_negative + self.margin)
+        return losses.mean() if size_average else losses.sum()
 
 
 class ContrastiveLoss(nn.Module):
@@ -207,6 +224,44 @@ class MyDataset(Dataset):
         # return 2000
         return self.length
 
+class TupleDataset(Dataset):
+    def __init__(self, dict, nq=1):
+        """
+
+        :param dict:
+        :param nq: negative nums
+        """
+        self.dict = dict
+        self.key_list = list(dict.keys())
+        self.nq = nq
+
+    def __getitem__(self, index):
+        """
+        return one query + 1 positive + n negative
+        :param index:
+        :return:
+        """
+        key = self.key_list[index]
+        query, positive = random.sample(self.dict[key], k=2)
+        items = []
+        items.append(query)
+        items.append(positive)
+        for i in range(self.nq):
+            n_key = random.choice(self.key_list)
+            while n_key == key:
+                n_key = random.choice(self.key_list)
+            items.append(random.choice(self.dict[n_key]))
+
+        target = torch.Tensor([-1, 1] + [0] * self.nq)
+
+        res = []
+        for item in items:
+            res.append(image_loader(item))
+        return res, target
+
+    def __len__(self):
+        return len(self.key_list)
+
 
 # Training
 
@@ -236,16 +291,20 @@ def train_model(model, criterion, optimizer, scheduler, dataloaders, dataset_siz
             # Iterate over version5_gray_data_2W_top3-0.7.
             for i, data in enumerate(dataloaders[phase]):
                 batchs = batchs + 1
-                img0, img1, label = data
-                nq = len(img0)
+                imgs, label = data
+                nq = len(imgs)
+
                 # zero the parameter gradients
                 optimizer.zero_grad()
                 # forward
                 # track history if only in train
                 with torch.set_grad_enabled(phase == 'train'):
                     for q in range(nq):
-                        output1, output2 = model(img0[q].to(device), img1[q].to(device))
-                        loss_contrastive = criterion(output1, output2, label[q].to(device))
+                        query = model.forward_once(imgs[q][0].to(device))
+                        positive = model.forward_once(imgs[q][1].to(device))
+                        negative = model.forward_once(imgs[q][2].to(device))
+
+                        loss_contrastive = criterion(query, positive, negative)
 
                         # backward + optimize only if in training phase
                         if phase == 'train':
@@ -285,6 +344,10 @@ def collate_triples(batch):
     return [batch[i][0] for i in range(len(batch))], [batch[i][1] for i in range(len(batch))], [batch[i][2] for i in
                                                                                                 range(len(batch))]
 
+def collate_triples(batch):
+    if len(batch) == 1:
+        return [batch[0][0]], [batch[0][1]]
+    return [batch[i][0] for i in range(len(batch))], [batch[i][1] for i in range(len(batch))]
 
 class siames_model:
     def __init__(self, file_path, finetuning=True):
@@ -308,14 +371,14 @@ class siames_model:
     def fine_tune_pretrained_model(self):
         train_dict = get_label_dict_from_txt(Config.train_txt)
         val_dict = get_label_dict_from_txt(Config.test_txt)
-        train_data = MyDataset(train_dict, should_invert=False)
+        train_data = TupleDataset(train_dict)
         train_dataloader = DataLoader(dataset=train_data, shuffle=True, num_workers=4,
                                       batch_size=Config.train_batch_size, collate_fn=collate_triples)
-        test_data = MyDataset(val_dict, should_invert=False)
+        test_data = TupleDataset(val_dict)
         test_dataloader = DataLoader(dataset=test_data, shuffle=True, num_workers=4, batch_size=Config.test_batch_size,
                                      collate_fn=collate_triples)
         net = SiameseNetwork().to(device)
-        criterion = ContrastiveLoss()
+        criterion = TripletLoss()
         optimizer = optim.Adam(net.parameters(), lr=5e-7, weight_decay=0.0003)
 
         exp_decay = math.exp(-0.01)
@@ -335,7 +398,7 @@ class siames_model:
 if __name__ == '__main__':
     val_dict = get_label_dict_from_txt(Config.test_txt)
     train_dict = get_label_dict_from_txt(Config.train_txt)
-    model = siames_model('resnet50.pth', finetuning=False)
+    model = siames_model('resnet101.pth', finetuning=False)
     print(str(model.net))
     since = time.time()
     model.fine_tune_pretrained_model()

@@ -6,8 +6,8 @@ from sklearn.decomposition import PCA
 from sklearn.preprocessing import normalize
 from multiprocessing import Pool
 
-query_file_path = "gem_eval_test_data.pkl"
-index_file_path = "gem_eval_index_data.pkl"
+query_file_path = "test_gem.pkl"
+index_file_path = "index_gem.pkl"
 
 query_images, query_features = joblib.load(query_file_path)
 index_images, index_features = joblib.load(index_file_path)
@@ -18,8 +18,8 @@ index_ids = [x.split("/")[-1].split(".")[0] for x in index_images]
 query_ids = np.array(query_ids)
 index_ids = np.array(index_ids)
 
-query_features = query_features.astype(np.float32)
-index_features = index_features.astype(np.float32)
+query_features = query_features.astype(np.float32).T
+index_features = index_features.astype(np.float32).T
 
 # region
 # print(" training pca")
@@ -59,54 +59,54 @@ since = time.time()
 D, I = invert_index.search(query_features, recall_num)
 print("search used {} s".format(str(time.time() - since)))
 
-# from diffussion import *
-#
-#
-# def buildGraph(X):
-#     K = 50  # approx 50 mutual nns
-#
-#     A = np.dot(X.T, X)
-#     W = sim_kernel(A).T
-#     W = topK_W(W, K)
-#     Wn = normalize_connection_graph(W)
-#     return Wn
-#
-#
-# def get_diffusion_rank(Wn, X, Q):
-#     QUERYKNN = 5
-#     alpha = 0.9
-#     # perform search
-#     print("begin dot")
-#     sim = np.dot(X.T, Q)
-#     qsim = sim_kernel(sim).T
-#
-#     sortidxs = np.argsort(-qsim, axis=1)
-#     for i in range(len(qsim)):
-#         qsim[i, sortidxs[i, QUERYKNN:]] = 0
-#
-#     qsim = sim_kernel(qsim)
-#     cg_ranks = cg_diffusion(qsim, Wn, alpha)
-#     return cg_ranks
-#
-#
-# dif = np.empty(I.shape)
-#
-# for i, indexs in enumerate(I):
-#     X = index_features[indexs].T
-#     Q = query_features[[i]].T
-#     Wn = buildGraph(X)
-#     rank = get_diffusion_rank(Wn, X, Q)
-#     indexs = indexs[rank[:, 0]]
-#     dif[i, :] = indexs
-#
-# I = dif
-# I = I.astype(np.int32)
+from diffussion import *
 
-with open("submit_base.csv", "w") as f:
+
+def buildGraph(X):
+    K = 50  # approx 50 mutual nns
+
+    A = np.dot(X.T, X)
+    W = sim_kernel(A).T
+    W = topK_W(W, K)
+    Wn = normalize_connection_graph(W)
+    return Wn
+
+
+def get_diffusion_rank(Wn, X, Q):
+    QUERYKNN = 5
+    alpha = 0.9
+    # perform search
+    print("begin dot")
+    sim = np.dot(X.T, Q)
+    qsim = sim_kernel(sim).T
+
+    sortidxs = np.argsort(-qsim, axis=1)
+    for i in range(len(qsim)):
+        qsim[i, sortidxs[i, QUERYKNN:]] = 0
+
+    qsim = sim_kernel(qsim)
+    cg_ranks = cg_diffusion(qsim, Wn, alpha)
+    return cg_ranks
+
+
+dif = np.empty(I.shape)
+
+for i, indexs in enumerate(I):
+    X = index_features[indexs].T
+    Q = query_features[[i]].T
+    Wn = buildGraph(X)
+    rank = get_diffusion_rank(Wn, X, Q)
+    indexs = indexs[rank[:, 0]]
+    dif[i, :] = indexs
+
+I = dif
+I = I.astype(np.int32)
+
+with open("submit_dif.csv", "w") as f:
     f.write("id,images\n")
     for i, indexs in enumerate(I):
         f.write(query_ids[i] + "," + " ".join(index_ids[indexs[0:100]]) + "\n")
 
-with open("baseline_base.csv", "w") as f:
+with open("baseline_dif.csv", "w") as f:
     for i, indexs in enumerate(I):
         f.write(query_ids[i] + "," + " ".join(index_ids[indexs]) + "\n")

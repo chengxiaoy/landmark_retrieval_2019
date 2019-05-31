@@ -388,6 +388,27 @@ def set_batchnorm_eval(m):
         # p.requires_grad = False
 
 
+def valid_ft_model():
+    image_tests = [[], [], []]
+    ft_model = siames_model('SiameseNetwork(resnet50_gem_eval).pth', finetuning=True)
+    model = siames_model("", finetuning=False)
+    dis1_list = []
+    dis2_list = []
+    for image_test in image_tests:
+        query1 = ft_model.extract_feature(image_test[0])
+        pos1 = ft_model.extract_feature(image_test[1])
+        nega1 = ft_model.extract_feature(image_test[2])
+        dis1 = np.dot(query1, pos1) - np.dot(query1, nega1)
+        dis1_list.append(dis1)
+        query2 = model.extract_feature(image_test[0])
+        pos2 = model.extract_feature(image_test[1])
+        nega2 = model.extract_feature(image_test[2])
+        dis2 = np.dot(query2, pos2) - np.dot(query2, nega2)
+        dis2_list.append(dis2)
+    print(dis1_list)
+    print(dis2_list)
+
+
 if __name__ == '__main__':
     model = siames_model('SiameseNetwork(resnet50_gem_eval).pth', finetuning=True)
     print(str(model.net))
