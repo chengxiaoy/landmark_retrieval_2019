@@ -15,6 +15,8 @@ import random
 import copy
 import os
 from sklearn.preprocessing import normalize as sknormalize
+from sklearn.metrics import pairwise_distances
+from sklearn.externals import joblib
 
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
@@ -293,6 +295,8 @@ def collate_triples(batch):
 
 class siames_model:
     def __init__(self, file_path, finetuning=True):
+
+        self.finetuning = finetuning
         if not finetuning:
             self.net = SiameseNetwork().to(device).eval()
         else:
@@ -335,10 +339,17 @@ class siames_model:
         train_model(net, criterion, optimizer, scheduler, dataloaders, Config.train_number_epochs)
 
     def extract_feature(self, image_path):
-
-        img = image_loader(image_path)
-        feature = self.net.forward_once(img.to(device)).data.cpu().numpy()
-        return feature[0]
+        if self.finetuning:
+            img = image_loader(image_path)
+            feature = self.net.forward_once(img.to(device)).data.cpu().numpy()
+            return feature[0]
+        else:
+            imgs = image_loader_eval(image_path)
+            feature = np.zeros((len(imgs), 2048))
+            for i, img in enumerate(imgs):
+                feature[i, :] = self.net.forward_once(img.to(device)).data.cpu().numpy()[0]
+            feature = np.sum(feature, axis=0)
+            return self.normalize(feature)
 
     def split_dict(self, dict):
         keys = []
@@ -388,9 +399,18 @@ def set_batchnorm_eval(m):
         # p.requires_grad = False
 
 
-def valid_ft_model():
-    image_tests = [[], [], []]
-    ft_model = siames_model('SiameseNetwork(resnet50_gem_eval).pth', finetuning=True)
+def distance(x1, x2):
+    return pairwise_distances(x1.reshape(1, -1), x2.reshape(1, -1))[0][0]
+
+
+def valid_ft_model(file_path):
+    image_tests = [
+        ["valid_data/q1.jpg", "valid_data/p1.jpg", "valid_data/n1.jpg"],
+        ['valid_data/q2.jpg', 'valid_data/p2.jpg', 'valid_data/n2.jpg'],
+        ['valid_data/q3.jpg', 'valid_data/p3.jpg', 'valid_data/n3.jpg'],
+        ['valid_data/q4.jpg', 'valid_data/p4.jpg', 'valid_data/n4.jpg'],
+    ]
+    ft_model = siames_model(file_path, finetuning=True)
     model = siames_model("", finetuning=False)
     dis1_list = []
     dis2_list = []
@@ -398,23 +418,26 @@ def valid_ft_model():
         query1 = ft_model.extract_feature(image_test[0])
         pos1 = ft_model.extract_feature(image_test[1])
         nega1 = ft_model.extract_feature(image_test[2])
-        dis1 = np.dot(query1, pos1) - np.dot(query1, nega1)
+        dis1 = distance(nega1, query1) - distance(pos1, query1)
         dis1_list.append(dis1)
         query2 = model.extract_feature(image_test[0])
         pos2 = model.extract_feature(image_test[1])
         nega2 = model.extract_feature(image_test[2])
-        dis2 = np.dot(query2, pos2) - np.dot(query2, nega2)
+        dis2 = distance(nega2, query2) - distance(pos2, query2)
         dis2_list.append(dis2)
     print(dis1_list)
     print(dis2_list)
 
 
 if __name__ == '__main__':
-    model = siames_model('SiameseNetwork(resnet50_gem_eval).pth', finetuning=True)
+
+    model = siames_model('resnet_gem.pth', finetuning=True)
     print(str(model.net))
     feature = model.extract_feature("test.jpg")
     print(feature)
     print(np.dot(feature, feature.T))
-    # since = time.time()
+
+    valid_ft_model('resnet_gem.pth')
+    since = time.time()
     # model.fine_tune_pretrained_model()
     # print("fine-tuning used {} s".format(str(time.time() - since)))

@@ -146,6 +146,6 @@ if __name__ == '__main__':
     #     'User-Agent': 'Mozilla/4.0(compatible;MSIE 5.5;Windows NT)', }
 
     url = 'https://lh3.googleusercontent.com/-wtf3Okv9NZU/WNqxEgcY1-I/AAAAAAACWoM/W_fRiuJJhbkgzVMZSVYl2TZG3IB41VTeQCOcB/s1600/'
-    download_image([132, url], "test_data")
+    download_image([132, url], "valid_data")
 
     # response = requests.get(url1, stream=True, headers=headers, timeout=3, proxies=proxies)
