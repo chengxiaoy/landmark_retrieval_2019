@@ -35,7 +35,7 @@ def get_invert_index(feature):
     return gpu_index_flat
 
 
-recall_num = 10
+recall_num = 5
 weigths = np.diag(np.logspace(0, -1.5, recall_num))
 
 print(" building index")
@@ -65,4 +65,4 @@ for i, index in enumerate(I):
 
 augment_index_features = normalize(augment_index_features)
 
-joblib.dump((query_ids, augment_query_features, index_ids, augment_index_features), "dba.pkl")
+joblib.dump((query_ids, augment_query_features, index_ids, augment_index_features), "dba_2.pkl")

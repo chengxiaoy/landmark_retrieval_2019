@@ -27,7 +27,7 @@ for id, feature in zip(query_ids, query_features):
 
 gem_index_dict = {}
 for id, feature in zip(index_ids, index_features):
-    gem_test_dict[id] = feature
+    gem_index_dict[id] = feature
 
 vgg_query_file_path = "test_vgg.pkl"
 vgg_index_file_path = "index_vgg.pkl"
@@ -50,13 +50,13 @@ for id, feature in zip(vgg_query_ids, vgg_query_features):
 
 vgg_index_dict = {}
 for id, feature in zip(vgg_index_ids, vgg_index_features):
-    vgg_test_dict[id] = feature
+    vgg_index_dict[id] = feature
 
 for qid in gem_test_dict:
-    gem_test_dict[qid] = np.concatenate((gem_test_dict[qid], vgg_test_dict[qid]), axis=1)
+    gem_test_dict[qid] = np.concatenate((gem_test_dict[qid], vgg_test_dict[qid]))
 
 for xid in gem_index_dict:
-    gem_index_dict[xid] = np.concatenate((gem_index_dict[xid], vgg_index_dict[xid]), axis=1)
+    gem_index_dict[xid] = np.concatenate((gem_index_dict[xid], vgg_index_dict[xid]))
 
 qids = list(gem_test_dict.keys())
 query_features = np.zeros((query_features.shape[0],query_features.shape[1]+vgg_query_features.shape[1]))
@@ -74,6 +74,10 @@ index_features = normalize(index_features)
 
 query_features = query_features.astype(np.float32)
 index_features = index_features.astype(np.float32)
+
+
+print(query_features.shape)
+print(index_features.shape)
 
 # region
 # print(" training pca")
